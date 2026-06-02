@@ -41,6 +41,40 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertEqual(response.verdict, "allow")
         self.assertEqual(response.categories, [])
 
+    def test_soft_category_not_blocked_without_judge(self) -> None:
+        # Высокая оценка soft-категории от одного сырого сенсора, без подтверждения
+        # арбитра, не должна давать block — только review (гашение шума).
+        signals = [
+            SignalResult(
+                name="visual_classifier",
+                status="ok",
+                categories={"political_persuasion": 0.92},
+            )
+        ]
+        response = self.engine.decide(self.request, signals)
+        self.assertEqual(response.verdict, "review")
+        self.assertEqual(response.categories, ["political_persuasion"])
+
+    def test_soft_category_blocked_when_judge_confirms(self) -> None:
+        # Та же высокая оценка, но подтверждённая арбитром (role="judge"),
+        # переводит soft-категорию в block.
+        signals = [
+            SignalResult(
+                name="visual_classifier",
+                status="ok",
+                categories={"political_persuasion": 0.92},
+            ),
+            SignalResult(
+                name="policy_judge_heuristic",
+                status="ok",
+                role="judge",
+                categories={"political_persuasion": 0.7},
+            ),
+        ]
+        response = self.engine.decide(self.request, signals)
+        self.assertEqual(response.verdict, "block")
+        self.assertEqual(response.categories, ["political_persuasion"])
+
 
 if __name__ == "__main__":
     unittest.main()

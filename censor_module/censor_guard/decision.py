@@ -23,11 +23,13 @@ class DecisionEngine:
         self.review_threshold = review_threshold
 
     def decide(self, request: ModerationRequest, signals: list[SignalResult]) -> ModerationResponse:
-        # category_scores  — макс. оценка по каждой категории среди всех сенсоров.
-        # category_sources — какие именно сенсоры «увидели» эту категорию (для evidence).
+        # category_scores  — макс. оценка по каждой категории среди всех сигналов.
+        # category_sources — какие именно сигналы «увидели» эту категорию (для evidence).
+        # judge_confirmed  — категории, подтверждённые хотя бы одним арбитром (role="judge").
         # notes            — причины пропусков/ошибок сенсоров (status != ok).
         category_scores: dict[str, float] = defaultdict(float)
         category_sources: dict[str, list[str]] = defaultdict(list)
+        judge_confirmed: set[str] = set()
         notes: list[str] = []
 
         for signal in signals:
@@ -38,26 +40,32 @@ class DecisionEngine:
                     notes.append(f"{signal.name}: {signal.reason}")
                 continue
             for category, score in signal.categories.items():
-                # Берём максимум: если хотя бы один сенсор уверен — категория «горит».
+                # Берём максимум: если хотя бы один сигнал уверен — категория «горит».
                 if score >= category_scores[category]:
                     category_scores[category] = score
                 if score > 0:
                     category_sources[category].append(signal.name)
+                    # Подтверждение для soft-блока определяется ролью сигнала,
+                    # а не его именем: любой арбитр (эвристика-консенсус или
+                    # ShieldGemma), назвавший категорию, считается подтверждением.
+                    if signal.role == "judge":
+                        judge_confirmed.add(category)
 
-        # Hard-категории блокируются от любого сенсора, перешагнувшего порог.
+        # Hard-категории блокируются от любого сигнала, перешагнувшего порог.
         hard_block_matches = [
             category
             for category in HARD_BLOCK_CATEGORIES
             if category_scores.get(category, 0.0) >= self.block_threshold
         ]
         # Soft-категории (harassment, политика и т.п.) — более «мягкие»: их
-        # блокируем, только если высокую оценку подтвердил именно policy judge,
-        # а не один сырой сенсор. Это снижает ложные блокировки.
+        # блокируем, только если высокую оценку подтвердил арбитр (role="judge"),
+        # а не один сырой сенсор. Одиночный шумный сенсор в soft-категории так
+        # дойдёт максимум до review, но не до block. Это и есть «гашение шума».
         soft_block_matches = [
             category
             for category in SOFT_REVIEW_CATEGORIES
             if category_scores.get(category, 0.0) >= self.block_threshold
-            and "policy_judge_heuristic" in category_sources.get(category, [])
+            and category in judge_confirmed
         ]
         # Всё, что выше review-порога, но не дотянуло до блокировки → ручная проверка.
         review_matches = [

@@ -1,4 +1,8 @@
-transformers>=4.41,<5.0
+# Тяжёлые ML-зависимости. Базовый сервис поднимается и без них (сенсоры тогда
+# отдают status="skipped"). transformers>=4.50 нужен для ShieldGemma-2
+# (класс ShieldGemma2ForImageClassification).
+transformers>=4.50,<5.0
 torch>=2.3,<3.0
 accelerate>=0.31,<1.0
+# OCR отложён в v2 (см. PLAN.md, P0.1); оставлено для будущего возврата текста.
 pytesseract>=0.3.10,<1.0

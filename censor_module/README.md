@@ -1,28 +1,32 @@
-# Censor Module MVP
+# Censor Module (algorithm v2)
 
-First implementation of a multi-layer image guardrail for `text2image`, `img2img stylization`, and `img2img editing`.
+Multi-layer image guardrail for `text2image`, `img2img stylization`, and `img2img editing`.
+
+> **v2** is image-centric. The text guard and OCR are intentionally deferred
+> (see [PLAN.md](PLAN.md), P0.1) — their adapter files stay in the tree for later.
 
 ## What is implemented
 
 - unified moderation API for input and output checks
-- text guard stub that always marks prompt text as safe
-- OCR adapter for text found inside images
-- visual multi-label image classifier adapter
-- explicit-content detector adapter
-- policy-judge layer with a heuristic fallback and an optional ShieldGemma integration point
-- rule-based decision engine with `allow / review / block`
+- visual multi-label image classifier adapter (zero-shot)
+- explicit-content (NSFW) detector adapter
+- judge layer: real **ShieldGemma-2** multimodal judge (optional) + a consensus
+  heuristic that always runs and gates soft-category blocks
+- rule-based decision engine with `allow / review / block`, where soft categories
+  block only when a judge (`role="judge"`) confirms them
 - CLI for local moderation runs
 
 ## Architecture
 
 ```text
 request
-  -> text guard stub
-  -> image fast analyzer
-       -> OCR
-       -> visual classifier
-       -> explicit content detector
-  -> policy judge
+  -> load image (no image -> allow)
+  -> sensors (role="sensor")
+       -> visual classifier (zero-shot)
+       -> explicit content detector (NSFW)
+  -> judges (role="judge")
+       -> ShieldGemma-2 (optional, strong signal on hard categories)
+       -> heuristic consensus (>=2 sensors agree -> confirm)
   -> decision engine
   -> verdict + category + rationale
 ```
@@ -75,6 +79,12 @@ OCR lookup order:
 
 ## Notes
 
-- The text filter is a placeholder by design. It always returns `safe`, but the adapter contract is already in place.
-- The OCR, visual classifier, explicit detector, and ShieldGemma judge are optional adapters. If a backend is unavailable, the service returns a structured `skipped` status instead of failing the whole request.
-- The heuristic policy judge keeps the pipeline operational before a real multimodal judge is attached.
+- v2 moderates the image only. The text guard and OCR adapters exist but are not
+  wired into the pipeline yet (see [PLAN.md](PLAN.md), P0.1).
+- The visual classifier, explicit detector, and ShieldGemma judge are optional. If
+  a backend is unavailable, the service returns a structured `skipped`/`error`
+  status instead of failing the whole request.
+- ShieldGemma-2 (`google/shieldgemma-2-4b-it`) is a gated model: enable it with
+  `CENSOR_ENABLE_POLICY_JUDGE=true`, install `requirements-ml.txt`, and
+  `huggingface-cli login`. Until then the consensus heuristic keeps the pipeline
+  operational on its own.

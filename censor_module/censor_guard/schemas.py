@@ -10,6 +10,12 @@ Stage = Literal["input", "output"]
 Scenario = Literal["text2image", "img2img_stylization", "img2img_editing", "output"]
 Verdict = Literal["allow", "review", "block"]
 SignalStatus = Literal["ok", "skipped", "error"]
+# Роль сигнала в конвейере:
+#   "sensor" — независимый детектор, его оценки участвуют в фьюжне (max);
+#   "judge"  — «арбитр», чьё мнение используется как подтверждение (gate)
+#              для soft-категорий. DecisionEngine различает их по этому полю,
+#              а не по имени сенсора.
+SignalRole = Literal["sensor", "judge"]
 
 
 class ModerationRequest(BaseModel):
@@ -25,6 +31,7 @@ class ModerationRequest(BaseModel):
 class SignalResult(BaseModel):
     name: str
     status: SignalStatus
+    role: SignalRole = "sensor"
     categories: dict[str, float] = Field(default_factory=dict)
     text: list[str] = Field(default_factory=list)
     reason: str | None = None
